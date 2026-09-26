@@ -1,0 +1,8 @@
+| Configuration                        |   true_positives |   false_positives |   true_negatives |   false_negatives |   precision |   recall |   f1_score |   false_positive_rate |   false_negative_rate |   accuracy |
+|:-------------------------------------|-----------------:|------------------:|-----------------:|------------------:|------------:|---------:|-----------:|----------------------:|----------------------:|-----------:|
+| Config_A_Rules_Only                  |                4 |                 0 |               15 |                 1 |      1      |      0.8 |     0.8889 |                0      |                   0.2 |       0.95 |
+| Config_B_Transformer_Only            |                1 |                 0 |               15 |                 4 |      1      |      0.2 |     0.3333 |                0      |                   0.8 |       0.8  |
+| Config_C_Behavioral_ML_Only          |                5 |                15 |                0 |                 0 |      0.25   |      1   |     0.4    |                1      |                   0   |       0.25 |
+| Config_D_Transformer_Plus_Behavioral |                2 |                 1 |               14 |                 3 |      0.6667 |      0.4 |     0.5    |                0.0667 |                   0.6 |       0.8  |
+| Config_E_D_Plus_Adaptive_Trust       |                3 |                 0 |               15 |                 2 |      1      |      0.6 |     0.75   |                0      |                   0.4 |       0.9  |
+| Config_F_Full_System                 |                1 |                 0 |               15 |                 4 |      1      |      0.2 |     0.3333 |                0      |                   0.8 |       0.8  |

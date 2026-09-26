@@ -1,0 +1,196 @@
+{
+  "baselines": {
+    "baseline_1_rules": {
+      "true_positives": 4,
+      "false_positives": 0,
+      "true_negatives": 15,
+      "false_negatives": 1,
+      "precision": 1.0,
+      "recall": 0.8,
+      "f1_score": 0.8889,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.2,
+      "accuracy": 0.95
+    },
+    "baseline_2_behavioral_ml": {
+      "true_positives": 5,
+      "false_positives": 15,
+      "true_negatives": 0,
+      "false_negatives": 0,
+      "precision": 0.25,
+      "recall": 1.0,
+      "f1_score": 0.4,
+      "false_positive_rate": 1.0,
+      "false_negative_rate": 0.0,
+      "accuracy": 0.25
+    },
+    "baseline_3_semantic_transformer": {
+      "true_positives": 1,
+      "false_positives": 0,
+      "true_negatives": 15,
+      "false_negatives": 4,
+      "precision": 1.0,
+      "recall": 0.2,
+      "f1_score": 0.3333,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.8,
+      "accuracy": 0.8
+    }
+  },
+  "proposed_system": {
+    "true_positives": 3,
+    "false_positives": 0,
+    "true_negatives": 15,
+    "false_negatives": 2,
+    "precision": 1.0,
+    "recall": 0.6,
+    "f1_score": 0.75,
+    "false_positive_rate": 0.0,
+    "false_negative_rate": 0.4,
+    "accuracy": 0.9,
+    "avg_detection_latency_ms": 53.09
+  },
+  "agent_rag_metrics": {
+    "investigation_completion_rate": 1.0,
+    "tool_call_success_rate": 1.0,
+    "avg_rag_passages_retrieved": 2.0,
+    "citation_coverage": 1.0,
+    "unsupported_claim_rate": 0.0
+  },
+  "ablation_study": {
+    "Config_A_Rules_Only": {
+      "true_positives": 4,
+      "false_positives": 0,
+      "true_negatives": 15,
+      "false_negatives": 1,
+      "precision": 1.0,
+      "recall": 0.8,
+      "f1_score": 0.8889,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.2,
+      "accuracy": 0.95
+    },
+    "Config_B_Transformer_Only": {
+      "true_positives": 1,
+      "false_positives": 0,
+      "true_negatives": 15,
+      "false_negatives": 4,
+      "precision": 1.0,
+      "recall": 0.2,
+      "f1_score": 0.3333,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.8,
+      "accuracy": 0.8
+    },
+    "Config_C_Behavioral_ML_Only": {
+      "true_positives": 5,
+      "false_positives": 15,
+      "true_negatives": 0,
+      "false_negatives": 0,
+      "precision": 0.25,
+      "recall": 1.0,
+      "f1_score": 0.4,
+      "false_positive_rate": 1.0,
+      "false_negative_rate": 0.0,
+      "accuracy": 0.25
+    },
+    "Config_D_Transformer_Plus_Behavioral": {
+      "true_positives": 2,
+      "false_positives": 1,
+      "true_negatives": 14,
+      "false_negatives": 3,
+      "precision": 0.6667,
+      "recall": 0.4,
+      "f1_score": 0.5,
+      "false_positive_rate": 0.0667,
+      "false_negative_rate": 0.6,
+      "accuracy": 0.8
+    },
+    "Config_E_D_Plus_Adaptive_Trust": {
+      "true_positives": 3,
+      "false_positives": 0,
+      "true_negatives": 15,
+      "false_negatives": 2,
+      "precision": 1.0,
+      "recall": 0.6,
+      "f1_score": 0.75,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.4,
+      "accuracy": 0.9
+    },
+    "Config_F_Full_System": {
+      "true_positives": 1,
+      "false_positives": 0,
+      "true_negatives": 15,
+      "false_negatives": 4,
+      "precision": 1.0,
+      "recall": 0.2,
+      "f1_score": 0.3333,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.8,
+      "accuracy": 0.8
+    }
+  },
+  "scenario_performance": {
+    "METADATA_RUG_PULL": {
+      "true_positives": 0,
+      "false_positives": 0,
+      "true_negatives": 0,
+      "false_negatives": 1,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 1.0,
+      "accuracy": 0.0
+    },
+    "PERMISSION_RUG_PULL": {
+      "true_positives": 1,
+      "false_positives": 0,
+      "true_negatives": 0,
+      "false_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "accuracy": 1.0
+    },
+    "ENDPOINT_RUG_PULL": {
+      "true_positives": 0,
+      "false_positives": 0,
+      "true_negatives": 0,
+      "false_negatives": 1,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 1.0,
+      "accuracy": 0.0
+    },
+    "BEHAVIORAL_RUG_PULL": {
+      "true_positives": 1,
+      "false_positives": 0,
+      "true_negatives": 0,
+      "false_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "accuracy": 1.0
+    },
+    "COMBINED_RUG_PULL": {
+      "true_positives": 1,
+      "false_positives": 0,
+      "true_negatives": 0,
+      "false_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1_score": 1.0,
+      "false_positive_rate": 0.0,
+      "false_negative_rate": 0.0,
+      "accuracy": 1.0
+    }
+  }
+}

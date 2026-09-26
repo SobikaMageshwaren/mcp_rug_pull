@@ -1,0 +1,26 @@
+# Trust Score Calculation Weights
+# Trust Score = 100 - (w_sem * SemanticRisk + w_perm * PermissionRisk + w_beh * BehavioralRisk + w_hist * HistoricalRisk)
+
+trust_weights:
+  semantic_weight: 0.30
+  permission_weight: 0.25
+  behavioral_weight: 0.30
+  historical_weight: 0.15
+
+semantic_risk_factors:
+  high_drift_threshold: 0.40
+  medium_drift_threshold: 0.20
+  exfiltration_keyword_weight: 25.0
+  instruction_injection_weight: 30.0
+
+permission_risk_factors:
+  file_system_access: 20.0
+  network_exfiltration: 25.0
+  system_execution: 30.0
+  credential_access: 25.0
+
+behavioral_risk_factors:
+  call_rate_spike_multiplier: 2.5
+  latency_anomaly_std_threshold: 2.5
+  unseen_endpoint_penalty: 30.0
+  failure_rate_threshold: 0.30

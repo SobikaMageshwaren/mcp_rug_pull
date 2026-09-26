@@ -1,0 +1,16 @@
+{
+  "total_events": 40,
+  "benign_events": 30,
+  "rugpull_events": 10,
+  "change_type_distribution": {
+    "INITIAL_REGISTRATION": 10,
+    "NORMAL_OPERATION": 10,
+    "LEGITIMATE_UPDATE": 10,
+    "METADATA_RUG_PULL": 2,
+    "PERMISSION_RUG_PULL": 2,
+    "ENDPOINT_RUG_PULL": 2,
+    "BEHAVIORAL_RUG_PULL": 2,
+    "COMBINED_RUG_PULL": 2
+  },
+  "baseline_tool_count": 10
+}
