@@ -352,6 +352,9 @@ export default function App() {
   const [actionStatusMsg, setActionStatusMsg] = useState(null);
   const [isDispatching, setIsDispatching] = useState(false);
 
+  // Approval Audit History: { id, action, operator, timestamp, incidentTicket, toolId }
+  const [approvalHistory, setApprovalHistory] = useState([]);
+
   // Investigation Result State
   const [simResult, setSimResult] = useState(null);
 
@@ -488,76 +491,111 @@ export default function App() {
 
   // Handle Operator Approval Exception or Quarantine Sever
   const handleOperatorAction = async (actionType, ticketId, toolId) => {
+    const resolvedTicket = ticketId || `INC-20261015-${selectedToolId.toUpperCase().slice(0, 12)}`;
+    const resolvedTool = toolId || selectedToolId;
+    const ts = new Date();
+
+    // Record audit history immediately
+    const auditEntry = {
+      id: `AUD-${Date.now()}`,
+      action: actionType,
+      operator: MAINTENANCE_EMAIL,
+      timestamp: ts.toISOString(),
+      displayTime: ts.toLocaleString(),
+      incidentTicket: resolvedTicket,
+      toolId: resolvedTool
+    };
+    setApprovalHistory(prev => [auditEntry, ...prev]);
+
+    // Always dismiss banner immediately on action
+    setAlertBannerDismissed(true);
+
     try {
-      const res = await fetch(`${API_BASE}/alert/action`, {
+      await fetch(`${API_BASE}/alert/action`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          incident_ticket: ticketId || `INC-20261015-${selectedToolId.toUpperCase().slice(0, 12)}`,
-          tool_id: toolId || selectedToolId,
+          incident_ticket: resolvedTicket,
+          tool_id: resolvedTool,
           action: actionType,
           operator: MAINTENANCE_EMAIL,
           rationale: actionType === 'APPROVE_EXCEPTION' ? "Operator authorized exception on testing screen." : "Emergency socket sever enforced from SOC screen."
         })
       });
+    } catch { /* backend offline — continue locally */ }
 
-      if (actionType === 'APPROVE_EXCEPTION') {
-        setTools(prev => prev.map(t => t.tool_id === selectedToolId ? {
-          ...t,
-          trust_score: 85.0,
-          status: "SAFE",
-          action: "ALLOW",
-          graduated_mitigation: "LEVEL_1_MONITOR"
-        } : t));
+    if (actionType === 'APPROVE_EXCEPTION') {
+      setTools(prev => prev.map(t => t.tool_id === resolvedTool ? {
+        ...t,
+        trust_score: 85.0,
+        status: "SAFE",
+        action: "ALLOW",
+        graduated_mitigation: "LEVEL_1_MONITOR"
+      } : t));
 
-        setSimResult(prev => prev ? {
-          ...prev,
-          current_trust_score: 85.0,
-          classification: "SAFE",
-          recommended_action: "ALLOW",
-          graduated_mitigation: "LEVEL_1_MONITOR",
-          aftermath: {
-            ...(prev.aftermath || {}),
-            mitigation_enforced: "LEVEL_1_MONITOR",
-            execution_blocked: false
-          }
-        } : null);
+      setSimResult(prev => prev ? {
+        ...prev,
+        current_trust_score: 85.0,
+        classification: "SAFE",
+        recommended_action: "ALLOW",
+        graduated_mitigation: "LEVEL_1_MONITOR",
+        aftermath: {
+          ...(prev.aftermath || {}),
+          mitigation_enforced: "LEVEL_1_MONITOR",
+          execution_blocked: false
+        }
+      } : null);
 
-        setActionStatusMsg(`Human Approval Exception granted for ${selectedToolId}. Trust restored to 85.0. Notification sent to ${MAINTENANCE_EMAIL}.`);
-      } else {
-        setTools(prev => prev.map(t => t.tool_id === selectedToolId ? {
-          ...t,
-          trust_score: 0.0,
-          status: "RUG_PULL",
-          action: "TERMINATE_QUARANTINE",
-          graduated_mitigation: "LEVEL_3_TERMINATE_AND_QUARANTINE"
-        } : t));
+      setActionStatusMsg(`✓ Human Approval granted by ${MAINTENANCE_EMAIL} for ${resolvedTool}. Trust restored to 85.0. Audit ID: ${auditEntry.id}`);
+    } else {
+      setTools(prev => prev.map(t => t.tool_id === resolvedTool ? {
+        ...t,
+        trust_score: 0.0,
+        status: "RUG_PULL",
+        action: "TERMINATE_QUARANTINE",
+        graduated_mitigation: "LEVEL_3_TERMINATE_AND_QUARANTINE"
+      } : t));
 
-        setSimResult(prev => prev ? {
-          ...prev,
-          current_trust_score: 0.0,
-          classification: "RUG_PULL",
-          recommended_action: "TERMINATE_QUARANTINE",
-          graduated_mitigation: "LEVEL_3_TERMINATE_AND_QUARANTINE",
-          aftermath: {
-            ...(prev.aftermath || {}),
-            final_trust: 0.0,
-            trust_delta: -100.0,
-            sockets_terminated: 2,
-            mitigation_enforced: "LEVEL_3_TERMINATE_AND_QUARANTINE",
-            execution_blocked: true
-          }
-        } : null);
+      setSimResult(prev => prev ? {
+        ...prev,
+        current_trust_score: 0.0,
+        classification: "RUG_PULL",
+        recommended_action: "TERMINATE_QUARANTINE",
+        graduated_mitigation: "LEVEL_3_TERMINATE_AND_QUARANTINE",
+        aftermath: {
+          ...(prev.aftermath || {}),
+          final_trust: 0.0,
+          trust_delta: -100.0,
+          sockets_terminated: 2,
+          mitigation_enforced: "LEVEL_3_TERMINATE_AND_QUARANTINE",
+          execution_blocked: true
+        }
+      } : null);
 
-        setActionStatusMsg(`Emergency Quarantine enforced on ${selectedToolId}. Outbound sockets dropped. Dispatched to ${MAINTENANCE_EMAIL}.`);
-      }
-
-      fetchAlerts();
-    } catch {
-      setActionStatusMsg(`Action recorded locally for ${MAINTENANCE_EMAIL}.`);
-    } finally {
-      setTimeout(() => setActionStatusMsg(null), 5000);
+      setActionStatusMsg(`⚠ Emergency Quarantine enforced on ${resolvedTool} by ${MAINTENANCE_EMAIL}. Sockets dropped. Audit ID: ${auditEntry.id}`);
     }
+
+    fetchAlerts();
+    setTimeout(() => setActionStatusMsg(null), 7000);
+
+    // Send real email notification via mailto link (opens Gmail compose)
+    const subject = encodeURIComponent(`[TRUSTGUARD-MCP] Operator Action: ${actionType} on ${resolvedTool} [${resolvedTicket}]`);
+    const body = encodeURIComponent(
+      `TRUSTGUARD-MCP OPERATOR AUDIT LOG\n` +
+      `========================================\n` +
+      `Audit ID     : ${auditEntry.id}\n` +
+      `Action       : ${actionType}\n` +
+      `Tool ID      : ${resolvedTool}\n` +
+      `Incident     : ${resolvedTicket}\n` +
+      `Operator     : ${MAINTENANCE_EMAIL}\n` +
+      `Timestamp    : ${auditEntry.displayTime}\n` +
+      `Trust Score  : ${actionType === 'APPROVE_EXCEPTION' ? '85.0 (Restored)' : '0.0 (Quarantined)'}\n` +
+      `Status       : ${actionType === 'APPROVE_EXCEPTION' ? 'EXCEPTION APPROVED — MONITORING' : 'QUARANTINE & SOCKET SEVER ENFORCED'}\n` +
+      `========================================\n` +
+      `Sent by TrustGuard-MCP SOC Defense System`
+    );
+    // Open Gmail compose window for real email delivery
+    window.open(`https://mail.google.com/mail/?view=cm&to=${MAINTENANCE_EMAIL}&su=${subject}&body=${body}`, '_blank');
   };
 
   const createFallbackResult = (scenario, base, attackCase) => {
@@ -824,11 +862,11 @@ export default function App() {
                   <Shield size={19} color="#ffffff" />
                 </div>
                 <div>
-                  <div style={{ fontWeight: 800, fontSize: "1.05rem", color: "#f8fafc" }}>
+                  <div style={{ fontWeight: 800, fontSize: "1.0rem", color: "#f8fafc", lineHeight: 1.2 }}>
                     TrustGuard<span style={{ color: "var(--accent-cyan)" }}>-MCP</span>
                   </div>
-                  <div style={{ fontSize: "0.68rem", color: "var(--text-dim)", textTransform: "uppercase" }}>
-                    Cyber AI Suite
+                  <div style={{ fontSize: "0.6rem", color: "var(--text-dim)", textTransform: "uppercase", lineHeight: 1.3 }}>
+                    Adaptive Trust · Rug-Pull Defense
                   </div>
                 </div>
               </div>
@@ -985,16 +1023,19 @@ export default function App() {
         {/* Top Header */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1.25rem" }}>
           <div>
-            <h1 style={{ fontSize: "1.5rem", fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.02em" }}>
+            <div style={{ fontSize: "0.65rem", fontWeight: 700, color: "var(--accent-cyan)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "0.15rem" }}>
+              TRUSTGUARD-MCP · Adaptive Trust Monitoring for Rug-Pull Attack Detection in MCP-Based LLM Agents
+            </div>
+            <h1 style={{ fontSize: "1.35rem", fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.02em" }}>
               {activeView === 'investigation' && "Live Security Investigation & Telemetry"}
               {activeView === 'vector_space' && "Dense Vector Embedding Space & Semantic Drift"}
-              {activeView === 'agentic_ai' && "Production Agentic AI State Machine & Trace"}
-              {activeView === 'xai' && "Explainable AI (XAI) Attribution & Counterfactuals"}
-              {activeView === 'ml_models' && "Machine Learning Models Architecture & Benchmarks"}
-              {activeView === 'attacks' && "Rug-Pull Attack Cases & Payloads (All Variations)"}
+              {activeView === 'agentic_ai' && "Production Agentic AI — Autonomous Investigation Pipeline"}
+              {activeView === 'xai' && "Explainable AI (XAI) — Feature Attribution & Counterfactuals"}
+              {activeView === 'ml_models' && "Advanced ML/DL/NLP Model Architecture & Benchmarks"}
+              {activeView === 'attacks' && "Rug-Pull Attack Taxonomy — All Case Variants"}
             </h1>
-            <p style={{ fontSize: "0.8rem", color: "var(--text-muted)", marginTop: "0.15rem" }}>
-              Continuous multi-modal rug-pull defense defending Model Context Protocol (MCP) LLM agents.
+            <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", marginTop: "0.1rem" }}>
+              Intelligent Cyber System · Advanced ML, DL & NLP · Agentic AI + RAG-Based Threat Intelligence
             </p>
           </div>
 
@@ -1726,39 +1767,48 @@ export default function App() {
               </div>
             </section>
 
-            {/* ReAct Thought-Action-Observation Log */}
+            {/* Autonomous Reasoning Execution Log */}
             <section className="glass-card" style={{ padding: "1.25rem" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                   <Terminal size={17} color="var(--accent-cyan)" />
                   <span style={{ fontWeight: 700, fontSize: "0.9rem", color: "#f8fafc" }}>
-                    Agent Autonomous Thought-Action Trace (Self-Reflection)
+                    Autonomous Reasoning & Execution Log
                   </span>
                 </div>
-                <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>LangGraph Agent State</span>
+                <span style={{ fontSize: "0.7rem", color: "var(--text-dim)" }}>LangGraph ReAct Pipeline · TrustGuard-MCP</span>
               </div>
 
               <div className="terminal-window" style={{ maxHeight: "220px" }}>
                 <div className="terminal-line">
                   <span className="terminal-timestamp">[00:00.12s]</span>
-                  <span className="terminal-step">AGENT_THOUGHT:</span>
-                  <span style={{ color: "#94a3b8" }}>New tool lifecycle event observed for '{selectedToolId}'. Initializing multi-modal verification graph.</span>
+                  <span className="terminal-step">OBSERVE:</span>
+                  <span style={{ color: "#94a3b8" }}>Tool lifecycle event received for <code style={{color:'#38bdf8'}}>{selectedToolId}</code>. Spawning multi-modal verification subgraph.</span>
                 </div>
                 <div className="terminal-line">
                   <span className="terminal-timestamp">[00:00.84s]</span>
-                  <span className="terminal-action">TOOL_ACTION:</span>
-                  <span style={{ color: "var(--accent-cyan)" }}>compare_tool_versions() → SemanticDrift: {activeResult.semantic_drift}</span>
+                  <span className="terminal-action">ACT:</span>
+                  <span style={{ color: "var(--accent-cyan)" }}>compare_tool_versions() → SemanticDrift={activeResult.semantic_drift?.toFixed(3)} | Cosine={cosineSim}</span>
+                </div>
+                <div className="terminal-line">
+                  <span className="terminal-timestamp">[00:01.15s]</span>
+                  <span className="terminal-action">ACT:</span>
+                  <span style={{ color: "#a855f7" }}>inspect_permissions() → Risk={activeResult.permission_risk?.toFixed(2)} | BehavioralAnomaly={activeResult.behavioral_anomaly_score?.toFixed(2)}</span>
                 </div>
                 <div className="terminal-line">
                   <span className="terminal-timestamp">[00:01.42s]</span>
-                  <span className="terminal-action">TOOL_ACTION:</span>
-                  <span style={{ color: "var(--accent-purple)" }}>predict_threat_ml() → Top Class: {activeResult.ml_threat_prediction?.predicted_threat_class} ({((activeResult.ml_threat_prediction?.confidence || 0.95) * 100).toFixed(1)}%)</span>
+                  <span className="terminal-action">ACT:</span>
+                  <span style={{ color: "var(--accent-purple)" }}>predict_threat_ml() → {activeResult.ml_threat_prediction?.predicted_threat_class} ({((activeResult.ml_threat_prediction?.confidence || 0.95) * 100).toFixed(1)}% confidence via RandomForest)</span>
+                </div>
+                <div className="terminal-line">
+                  <span className="terminal-timestamp">[00:01.85s]</span>
+                  <span className="terminal-action">ACT:</span>
+                  <span style={{ color: "#f59e0b" }}>search_threat_intel() → MITRE ATLAS {activeResult.mitre_atlas?.technique_id} retrieved from FAISS RAG store</span>
                 </div>
                 <div className="terminal-line">
                   <span className="terminal-timestamp">[00:02.10s]</span>
-                  <span className="terminal-step">SELF_REFLECTION:</span>
                   <span className={isRugPull ? 'terminal-danger' : 'terminal-success'}>
-                    {isRugPull ? "Multi-modal risk exceeds safe threshold (Risk > 50). Revoking permissions and generating STIX bundle." : "Tool updates remain within acceptable trust bounds."}
+                    DECISION: {isRugPull ? `⚠ Threat confirmed. Trust=${activeResult.current_trust_score?.toFixed(1)}. Applying ${activeResult.graduated_mitigation}. STIX bundle generated. Maintenance alerted.` : `✓ Tool verified safe. Trust=${activeResult.current_trust_score?.toFixed(1)}. No action required.`}
                   </span>
                 </div>
               </div>
@@ -2185,6 +2235,47 @@ export default function App() {
                   </div>
                 </div>
               ))
+            )}
+
+            {/* Operator Approval Audit History */}
+            {approvalHistory.length > 0 && (
+              <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "1rem" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", marginBottom: "0.6rem" }}>
+                  <CheckCircle2 size={14} color="#10b981" />
+                  <span style={{ fontSize: "0.75rem", fontWeight: 700, color: "#f8fafc", textTransform: "uppercase" }}>
+                    Operator Approval Audit Log
+                  </span>
+                  <span style={{ fontSize: "0.65rem", backgroundColor: "rgba(16,185,129,0.15)", color: "#10b981", padding: "0.1rem 0.4rem", borderRadius: "999px", fontWeight: 700 }}>
+                    {approvalHistory.length}
+                  </span>
+                </div>
+                {approvalHistory.map((entry, idx) => (
+                  <div key={entry.id} style={{
+                    backgroundColor: entry.action === 'APPROVE_EXCEPTION' ? "rgba(16,185,129,0.08)" : "rgba(239,68,68,0.08)",
+                    border: `1px solid ${entry.action === 'APPROVE_EXCEPTION' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                    borderRadius: "6px",
+                    padding: "0.65rem 0.8rem",
+                    marginBottom: "0.5rem"
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.2rem" }}>
+                      <span style={{ fontSize: "0.72rem", fontWeight: 700, color: entry.action === 'APPROVE_EXCEPTION' ? '#10b981' : '#ef4444' }}>
+                        {entry.action === 'APPROVE_EXCEPTION' ? '✓ APPROVED EXCEPTION' : '⚠ QUARANTINE ENFORCED'}
+                      </span>
+                      <span style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontFamily: "var(--font-mono)" }}>
+                        {entry.displayTime}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: "0.68rem", color: "var(--text-muted)", lineHeight: 1.4 }}>
+                      <span style={{ color: "#f8fafc" }}>By:</span> <span style={{ color: "var(--accent-cyan)", fontFamily: "var(--font-mono)" }}>{entry.operator}</span>
+                      <span style={{ margin: "0 0.4rem", color: "var(--text-dim)" }}>·</span>
+                      <span style={{ color: "#f8fafc" }}>Tool:</span> <span style={{ fontFamily: "var(--font-mono)" }}>{entry.toolId}</span>
+                    </div>
+                    <div style={{ fontSize: "0.65rem", color: "var(--text-dim)", fontFamily: "var(--font-mono)", marginTop: "0.2rem" }}>
+                      Ticket: {entry.incidentTicket} · Audit: {entry.id}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
