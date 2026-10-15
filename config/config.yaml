@@ -42,3 +42,11 @@ evaluation:
   test_size: 0.3
   temporal_split_ratio: 0.7
   ablation_runs: 5
+
+notifications:
+  maintenance_email: "sobikamageshwaren@gmail.com"
+  alert_channels: ["email", "soc_console", "stix_gateway"]
+  auto_dispatch_severity: ["CRITICAL", "HIGH", "SUSPICIOUS", "REQUIRE_HUMAN_APPROVAL", "MONITOR"]
+  smtp_relay_host: "smtp.trustguard-mcp.internal"
+  smtp_relay_port: 587
+
