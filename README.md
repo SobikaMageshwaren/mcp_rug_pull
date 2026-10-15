@@ -52,12 +52,15 @@ Existing security tools focus either on **static discovery analysis** (inspectin
 
 ## 6. Proposed Solution
 
-TrustGuard-MCP presents an integrated defense architecture:
+TrustGuard-MCP presents an integrated intelligence-driven defense architecture:
 * **Transformer Semantic Detector**: SentenceTransformers (`all-MiniLM-L6-v2`) measuring embedding drift.
 * **Behavioral Anomaly ML**: Isolation Forest tracking 11 runtime execution features.
-* **Adaptive Trust Engine**: Continuous score reduction (\(100.0 - \sum w_i R_i\)) with dynamic status policies (`ALLOW`, `MONITOR`, `REQUIRE HUMAN APPROVAL`, `BLOCK`).
-* **Agentic Security Investigator**: Autonomous state graph invoking 7 investigation tools.
+* **Adaptive Trust Engine**: Continuous score reduction (\(100.0 - \sum w_i R_i\)) with graduated zero-trust mitigation (`STANDARD_EXECUTION`, `ENHANCED_TELEMETRY_LOGGING`, `CAPABILITY_STRIPPING`, `REVOKE_AND_QUARANTINE`).
+* **Cyber Threat Intelligence (CTI) & MITRE ATLAS Layer**: Multi-class taxonomy mapping anomalies directly to MITRE ATLAS techniques (`AML.T0054`, `AML.T0051`, `AML.T0043`, `AML.T0025`) and ATT&CK (`T1059`, `T1548`, `T1071`, `T1041`).
+* **OASIS STIX 2.1 Threat Report Exporter**: Automated generation of standardized STIX 2.1 JSON incident bundles for enterprise threat intelligence sharing.
+* **Agentic Security Investigator**: Autonomous state graph invoking 9 investigation tools.
 * **RAG Threat Intelligence**: FAISS vector store returning source-attributed CTI passages.
+
 
 ---
 
@@ -159,6 +162,7 @@ Endpoints:
 * `GET /health`
 * `GET /tools`
 * `POST /evaluate_tool`
+* `POST /export_stix`
 * `POST /rag/search`
 * `POST /experiments/run`
 

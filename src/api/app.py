@@ -69,6 +69,7 @@ def list_tools():
             "trust_score": profile.current_trust_score,
             "status": profile.current_status,
             "recommended_action": profile.recommended_action,
+            "graduated_mitigation": getattr(profile, "graduated_mitigation", "STANDARD_EXECUTION"),
             "event_count": len(profile.historical_events)
         })
     return res
@@ -76,7 +77,7 @@ def list_tools():
 
 @app.post("/evaluate_tool")
 def evaluate_tool(req: EventEvaluationRequest):
-    """Performs full agentic security investigation and trust score calculation."""
+    """Performs full agentic security investigation, CTI classification, and trust calculation."""
     try:
         result = agent.investigate(req.baseline_tool, req.current_event)
         return result
@@ -88,6 +89,16 @@ def evaluate_tool(req: EventEvaluationRequest):
 def investigate(req: EventEvaluationRequest):
     """Alias for /evaluate_tool."""
     return evaluate_tool(req)
+
+
+@app.post("/export_stix")
+def export_stix(req: EventEvaluationRequest):
+    """Generates and returns an OASIS STIX 2.1 JSON incident bundle for the evaluated tool event."""
+    try:
+        result = agent.investigate(req.baseline_tool, req.current_event)
+        return result.get("stix_bundle", {})
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/rag/search")

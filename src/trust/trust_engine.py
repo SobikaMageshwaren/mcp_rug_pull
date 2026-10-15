@@ -55,7 +55,8 @@ class AdaptiveTrustEngine:
         event: Dict[str, Any],
         semantic_risk: float,
         permission_risk: float,
-        behavioral_anomaly_score: float
+        behavioral_anomaly_score: float,
+        tool_category: Optional[str] = None
     ) -> Dict[str, Any]:
         """Updates tool trust profile and produces explainable trust score decision."""
         tool_id = event["tool_id"]
@@ -75,11 +76,24 @@ class AdaptiveTrustEngine:
         past_risks = profile.risk_history[-5:] if profile.risk_history else []
         h_risk_100 = float(np_mean(past_risks) if past_risks else 0.0)
 
-        # Weighted score reduction formula
-        w_sem = self.weights.get("semantic_weight", 0.30)
-        w_perm = self.weights.get("permission_weight", 0.25)
-        w_beh = self.weights.get("behavioral_weight", 0.30)
-        w_hist = self.weights.get("historical_weight", 0.15)
+        # Context-aware dynamic weighting if category is specified
+        cat = tool_category or event.get("category")
+        weights = dict(self.weights)
+        if cat == "utility":
+            weights["permission_weight"] = 0.35
+            weights["semantic_weight"] = 0.35
+            weights["behavioral_weight"] = 0.20
+            weights["historical_weight"] = 0.10
+        elif cat == "database":
+            weights["permission_weight"] = 0.35
+            weights["behavioral_weight"] = 0.30
+            weights["semantic_weight"] = 0.25
+            weights["historical_weight"] = 0.10
+
+        w_sem = weights.get("semantic_weight", 0.30)
+        w_perm = weights.get("permission_weight", 0.25)
+        w_beh = weights.get("behavioral_weight", 0.30)
+        w_hist = weights.get("historical_weight", 0.15)
 
         total_risk = (
             w_sem * s_risk_100 +
@@ -90,21 +104,32 @@ class AdaptiveTrustEngine:
 
         current_score = max(0.0, min(100.0, 100.0 - total_risk))
 
-        # Determine classification and action
+        # Determine classification, action, and graduated intelligent mitigation
         if current_score >= 80.0:
             classification = "SAFE"
             action = "ALLOW"
+            graduated_mitigation = "STANDARD_EXECUTION"
         elif current_score >= 50.0:
             classification = "SUSPICIOUS"
-            action = "MONITOR" if current_score >= 65.0 else "REQUIRE HUMAN APPROVAL"
+            if current_score >= 65.0:
+                action = "MONITOR"
+                graduated_mitigation = "ENHANCED_TELEMETRY_LOGGING"
+            else:
+                action = "REQUIRE HUMAN APPROVAL"
+                if p_risk_100 >= 30.0:
+                    graduated_mitigation = "CAPABILITY_STRIPPING"
+                else:
+                    graduated_mitigation = "PROMPT_SANITIZATION_OR_ADMIN_APPROVAL"
         else:
             classification = "RUG_PULL"
             action = "BLOCK"
+            graduated_mitigation = "REVOKE_AND_QUARANTINE"
 
         # Update profile state
         profile.current_trust_score = round(current_score, 2)
         profile.current_status = classification
         profile.recommended_action = action
+        profile.graduated_mitigation = graduated_mitigation
         profile.risk_history.append(round(total_risk, 2))
 
         hist_event = HistoricalEvent(
@@ -116,7 +141,8 @@ class AdaptiveTrustEngine:
             permission_risk=round(permission_risk, 4),
             trust_score_after=round(current_score, 2),
             classification=classification,
-            recommended_action=action
+            recommended_action=action,
+            graduated_mitigation=graduated_mitigation
         )
         profile.historical_events.append(hist_event)
 
@@ -131,9 +157,10 @@ class AdaptiveTrustEngine:
                 "behavioral_risk": round(b_risk_100, 2),
                 "historical_risk": round(h_risk_100, 2)
             },
-            "weights_used": self.weights,
+            "weights_used": weights,
             "classification": classification,
-            "recommended_action": action
+            "recommended_action": action,
+            "graduated_mitigation": graduated_mitigation
         }
 
 

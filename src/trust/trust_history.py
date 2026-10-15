@@ -19,6 +19,7 @@ class HistoricalEvent(BaseModel):
     trust_score_after: float
     classification: str
     recommended_action: str
+    graduated_mitigation: str = "STANDARD_EXECUTION"
 
 
 class TrustProfile(BaseModel):
@@ -36,3 +37,4 @@ class TrustProfile(BaseModel):
     last_verified_timestamp: float = Field(default_factory=time.time)
     current_status: str = "SAFE"  # SAFE, SUSPICIOUS, RUG-PULL
     recommended_action: str = "ALLOW"  # ALLOW, MONITOR, REQUIRE HUMAN APPROVAL, BLOCK
+    graduated_mitigation: str = "STANDARD_EXECUTION"

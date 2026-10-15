@@ -73,16 +73,44 @@ class SecurityInvestigationAgent:
 
         # 5. Calculate Adaptive Trust Score
         invoked_tools.append("calculate_trust_score")
+        category = current_event.get("category") or baseline_tool.get("category")
         trust_res = self.tools.calculate_trust_score(current_event, metadata_risk, perm_risk, beh_score)["trust_evaluation"]
 
-        # 6. Generate final report
+        # 6. Multi-Class CTI Threat Classification (MITRE ATLAS & ATT&CK)
+        invoked_tools.append("classify_threat")
+        threat_info = self.tools.classify_threat(
+            semantic_drift=drift_val,
+            detected_keywords=meta_res.get("detected_keywords", []),
+            added_permissions=perm_res.get("added_permissions", []),
+            high_risk_added=perm_res.get("high_risk_added", []),
+            is_endpoint_changed=meta_res.get("is_endpoint_changed", False),
+            is_suspicious_endpoint=meta_res.get("is_suspicious_endpoint", False),
+            behavioral_anomaly_score=beh_score,
+            trust_score=trust_res["current_trust_score"]
+        )
+
+        graduated_mitigation = trust_res.get("graduated_mitigation", "STANDARD_EXECUTION")
+
+        # 7. Generate STIX 2.1 Threat Intelligence Bundle
+        invoked_tools.append("export_stix_bundle")
+        stix_bundle = self.tools.export_stix_bundle(
+            tool_id=tool_id,
+            trust_result=trust_res,
+            threat_info=threat_info,
+            graduated_mitigation=graduated_mitigation,
+            citations=threat_intel
+        )
+
+        # 8. Generate final explainable security report
         invoked_tools.append("generate_security_report")
         report = self.tools.generate_security_report(
             tool_id=tool_id,
             classification=trust_res["classification"],
             recommended_action=trust_res["recommended_action"],
             evidence=evidence,
-            threat_intelligence=threat_intel
+            threat_intelligence=threat_intel,
+            threat_info=threat_info,
+            graduated_mitigation=graduated_mitigation
         )
 
         return {
@@ -94,12 +122,21 @@ class SecurityInvestigationAgent:
             "permission_risk": perm_risk,
             "classification": trust_res["classification"],
             "recommended_action": trust_res["recommended_action"],
+            "graduated_mitigation": graduated_mitigation,
+            "threat_classification": threat_info["threat_category"],
+            "threat_name": threat_info["threat_name"],
+            "severity": threat_info["severity"],
+            "mitre_atlas": threat_info["mitre_atlas"],
+            "mitre_attack": threat_info["mitre_attack"],
+            "stix_bundle": stix_bundle,
             "evidence": evidence if evidence else ["Tool behavior and metadata match benign baseline."],
             "threat_intelligence": threat_intel,
             "invoked_tools": invoked_tools,
             "explanation": [
                 f"Previous trust score: {trust_res['previous_trust_score']}, Current trust score: {trust_res['current_trust_score']}",
-                f"Classification: {trust_res['classification']}, Recommended action: {trust_res['recommended_action']}",
+                f"Classification: {trust_res['classification']}, Recommended action: {trust_res['recommended_action']}, Graduated mitigation: {graduated_mitigation}",
+                f"Threat taxonomy: {threat_info['threat_name']} (MITRE ATLAS: {threat_info['mitre_atlas']['technique_id']})",
                 f"Risk components -> Semantic: {trust_res['risk_breakdown']['semantic_risk']}, Permission: {trust_res['risk_breakdown']['permission_risk']}, Behavioral: {trust_res['risk_breakdown']['behavioral_risk']}"
             ]
         }
+

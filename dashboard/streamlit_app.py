@@ -197,8 +197,29 @@ elif menu == "Interactive Attack Simulation":
         c3.metric("Classification", res["classification"])
         c4.metric("Recommended Action", res["recommended_action"])
 
-        st.write("### Investigation Summary & Evidence")
-        st.json(res)
+        # Intelligent CTI Classification & Graduated Defense
+        st.write("### 🏷️ CTI Taxonomy & Graduated Mitigation Policy")
+        cti1, cti2 = st.columns(2)
+        with cti1:
+            atlas = res.get("mitre_atlas", {})
+            st.info(f"**MITRE ATLAS Technique**: `{atlas.get('technique_id', 'AML.T0054')}` - **{atlas.get('technique_name', 'LLM Tool Poisoning')}**\n\n*Tactic*: {atlas.get('tactic', 'Execution')} | *CVE/CWE*: {atlas.get('cve_reference', 'CWE-94')}")
+        with cti2:
+            st.warning(f"**Graduated Defense**: `{res.get('graduated_mitigation', 'STANDARD_EXECUTION')}`\n\n*Threat Category*: `{res.get('threat_classification', 'TPA_METADATA_POISONING')}` | *Severity*: **{res.get('severity', 'HIGH')}**")
+
+        st.write("### 🔍 Investigation Summary & Evidence")
+        st.json({k: v for k, v in res.items() if k != "stix_bundle"})
+
+        # STIX 2.1 Threat Report Export
+        st.write("### 📦 OASIS STIX 2.1 Incident Bundle")
+        with st.expander("View & Download Standardized STIX 2.1 JSON Threat Bundle"):
+            stix_data = res.get("stix_bundle", {})
+            st.json(stix_data)
+            st.download_button(
+                label="📥 Download STIX 2.1 JSON Bundle",
+                data=json.dumps(stix_data, indent=2),
+                file_name=f"stix21_incident_{res['tool_id']}.json",
+                mime="application/json"
+            )
 
 
 # ---------------------------------------------------------

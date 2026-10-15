@@ -9,6 +9,8 @@ from src.semantic.semantic_drift import SemanticDriftCalculator
 from src.behavioral.anomaly_detector import BehavioralAnomalyDetector
 from src.trust.trust_engine import AdaptiveTrustEngine
 from src.rag.retriever import CTIThreatRetriever
+from src.cti.threat_taxonomy import classify_event_threat
+from src.cti.stix_exporter import STIXThreatExporter
 
 
 class InvestigationTools:
@@ -19,12 +21,14 @@ class InvestigationTools:
         trust_engine: AdaptiveTrustEngine = None,
         anomaly_detector: BehavioralAnomalyDetector = None,
         metadata_analyzer: MetadataAnalyzer = None,
-        threat_retriever: CTIThreatRetriever = None
+        threat_retriever: CTIThreatRetriever = None,
+        stix_exporter: STIXThreatExporter = None
     ):
         self.trust_engine = trust_engine or AdaptiveTrustEngine()
         self.anomaly_detector = anomaly_detector or BehavioralAnomalyDetector()
         self.metadata_analyzer = metadata_analyzer or MetadataAnalyzer()
         self.threat_retriever = threat_retriever or CTIThreatRetriever()
+        self.stix_exporter = stix_exporter or STIXThreatExporter()
 
     def get_tool_history(self, tool_id: str) -> Dict[str, Any]:
         """Tool 1: Retrieves historical lifecycle events for specified tool."""
@@ -107,15 +111,65 @@ class InvestigationTools:
         classification: str,
         recommended_action: str,
         evidence: List[str],
-        threat_intelligence: List[Dict[str, Any]]
+        threat_intelligence: List[Dict[str, Any]],
+        threat_info: Optional[Dict[str, Any]] = None,
+        graduated_mitigation: str = "STANDARD_EXECUTION"
     ) -> Dict[str, Any]:
         """Tool 7: Synthesizes final explainable security report."""
-        return {
+        report = {
             "status": "success",
             "tool_id": tool_id,
             "classification": classification,
             "recommended_action": recommended_action,
+            "graduated_mitigation": graduated_mitigation,
             "evidence_summary": evidence,
             "threat_intelligence_count": len(threat_intelligence),
             "threat_intelligence": threat_intelligence
         }
+        if threat_info:
+            report["threat_category"] = threat_info.get("threat_category")
+            report["threat_name"] = threat_info.get("threat_name")
+            report["mitre_atlas"] = threat_info.get("mitre_atlas")
+            report["mitre_attack"] = threat_info.get("mitre_attack")
+        return report
+
+    def classify_threat(
+        self,
+        semantic_drift: float,
+        detected_keywords: List[str],
+        added_permissions: List[str],
+        high_risk_added: List[str],
+        is_endpoint_changed: bool,
+        is_suspicious_endpoint: bool,
+        behavioral_anomaly_score: float,
+        trust_score: float
+    ) -> Dict[str, Any]:
+        """Tool 8: Maps multi-modal indicators to MITRE ATLAS & ATT&CK taxonomy."""
+        return classify_event_threat(
+            semantic_drift=semantic_drift,
+            detected_keywords=detected_keywords,
+            added_permissions=added_permissions,
+            high_risk_added=high_risk_added,
+            is_endpoint_changed=is_endpoint_changed,
+            is_suspicious_endpoint=is_suspicious_endpoint,
+            behavioral_anomaly_score=behavioral_anomaly_score,
+            trust_score=trust_score
+        )
+
+    def export_stix_bundle(
+        self,
+        tool_id: str,
+        trust_result: Dict[str, Any],
+        threat_info: Dict[str, Any],
+        graduated_mitigation: str,
+        citations: Optional[List[Dict[str, Any]]] = None
+    ) -> Dict[str, Any]:
+        """Tool 9: Generates OASIS STIX 2.1 JSON incident bundle for automated threat intelligence sharing."""
+        return self.stix_exporter.generate_bundle(
+            tool_id=tool_id,
+            trust_result=trust_result,
+            threat_info=threat_info,
+            graduated_mitigation=graduated_mitigation,
+            citations=citations
+        )
+

@@ -219,6 +219,9 @@ export default function App() {
         permission_risk: 0.0,
         classification: "SAFE",
         recommended_action: "ALLOW",
+        graduated_mitigation: "STANDARD_EXECUTION",
+        threat_classification: "BENIGN_UPDATE",
+        mitre_atlas: { technique_id: "NONE", technique_name: "Normal Operation" },
         evidence: ["Minor documentation update detected. No threat indicators found."],
         threat_intelligence: [
           { doc_id: "cti_mcp_006", title: "Zero-Trust Architecture Guidelines for MCP", source: "NIST Cybersecurity Framework", relevance_score: 0.45 }
@@ -235,6 +238,9 @@ export default function App() {
       permission_risk: 0.90,
       classification: "RUG_PULL",
       recommended_action: "BLOCK",
+      graduated_mitigation: "REVOKE_AND_QUARANTINE",
+      threat_classification: "TPA_METADATA_POISONING",
+      mitre_atlas: { technique_id: "AML.T0054", technique_name: "LLM Tool Poisoning", tactic: "Execution" },
       evidence: [
         "Tool description modified post-approval (semantic drift: 0.38)",
         "Covert exfiltration instruction payload detected in description text",
@@ -251,6 +257,7 @@ export default function App() {
       ]
     };
   };
+
 
   const executeRagSearch = async () => {
     setRagLoading(true);
@@ -609,6 +616,28 @@ export default function App() {
                       </div>
                     </div>
 
+                    {/* CTI Intelligence Banner */}
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem', background: 'rgba(255,255,255,0.02)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+                      <div>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>MITRE ATLAS TECHNIQUE</span>
+                        <div style={{ fontSize: '0.95rem', fontWeight: '700', color: '#38bdf8', marginTop: '0.2rem' }}>
+                          {simResult.mitre_atlas?.technique_id || 'AML.T0054'}: {simResult.mitre_atlas?.technique_name || 'LLM Tool Poisoning'}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>
+                          Tactic: {simResult.mitre_atlas?.tactic || 'Execution'}
+                        </div>
+                      </div>
+                      <div>
+                        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>GRADUATED MITIGATION</span>
+                        <div style={{ fontSize: '0.95rem', fontWeight: '700', color: '#f59e0b', marginTop: '0.2rem' }}>
+                          {simResult.graduated_mitigation || 'STANDARD_EXECUTION'}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)', marginTop: '0.2rem' }}>
+                          Category: {simResult.threat_classification || 'TPA_METADATA_POISONING'}
+                        </div>
+                      </div>
+                    </div>
+
                     {/* Evidence & Findings */}
                     <div style={{ marginBottom: '1.5rem' }}>
                       <h4 style={{ fontSize: '0.95rem', fontWeight: '700', color: 'var(--accent-cyan)', marginBottom: '0.5rem' }}>🔍 Evidence & Threat Indicators Collected</h4>
@@ -634,6 +663,31 @@ export default function App() {
                         ))}
                       </div>
                     </div>
+
+                    {/* STIX 2.1 Export Section */}
+                    {simResult.stix_bundle && (
+                      <div style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div>
+                          <div style={{ fontSize: '0.85rem', fontWeight: '700', color: 'var(--accent-cyan)' }}>📦 OASIS STIX 2.1 Incident Bundle Ready</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-dim)' }}>Standardized CTI JSON format with Attack Pattern, Indicator, and Course of Action</div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const blob = new Blob([JSON.stringify(simResult.stix_bundle, null, 2)], { type: 'application/json' });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `stix21_incident_${simResult.tool_id}.json`;
+                            a.click();
+                          }}
+                          className="btn-secondary"
+                          style={{ padding: '0.5rem 1rem', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
+                        >
+                          <FileText size={14} /> Download STIX 2.1 JSON
+                        </button>
+                      </div>
+                    )}
+
                   </div>
                 ) : (
                   <div className="glass-card" style={{ textAlign: 'center', padding: '4rem 2rem', color: 'var(--text-muted)' }}>

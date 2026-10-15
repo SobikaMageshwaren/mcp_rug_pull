@@ -79,12 +79,22 @@ Unlike static entry-gate analyzers that inspect tool definitions only upon regis
 
 ### E. Agentic Security Investigator (`src/agent/`)
 * **Execution Paradigm**: Autonomous tool-calling workflow (using LangGraph state graphs).
-* **Exposed Tools**: `get_tool_history`, `compare_tool_versions`, `get_behavior_history`, `calculate_trust_score`, `search_threat_intelligence`, `inspect_permissions`, `generate_security_report`.
+* **Exposed Tools**: `get_tool_history`, `compare_tool_versions`, `get_behavior_history`, `calculate_trust_score`, `search_threat_intelligence`, `inspect_permissions`, `generate_security_report`, `classify_threat`, `export_stix_bundle`.
+
+### F. Cyber Threat Intelligence & STIX 2.1 Layer (`src/cti/`)
+* **Multi-Class Threat Taxonomy**: Categorizes attacks into fine-grained vectors (`TPA_METADATA_POISONING`, `PERMISSION_ESCALATION`, `C2_ENDPOINT_REDIRECTION`, `BEHAVIORAL_BURST_EXFILTRATION`, `COMBINED_RUG_PULL`, `BENIGN_UPDATE`).
+* **Framework Alignment**: Maps each detected vector directly to **MITRE ATLAS** techniques (`AML.T0054`, `AML.T0051`, `AML.T0043`, `AML.T0025`) and **MITRE ATT&CK** IDs (`T1059`, `T1548`, `T1071`, `T1041`).
+* **OASIS STIX 2.1 Bundling**: Generates standardized STIX 2.1 JSON incident bundles containing `identity`, `attack-pattern`, `indicator`, `course-of-action`, `observed-data`, and `report` SDOs.
+* **Graduated Intelligent Mitigation**: Enforces context-aware zero-trust defense beyond simple binary blocking:
+  * `STANDARD_EXECUTION` ($T \ge 80.0$)
+  * `ENHANCED_TELEMETRY_LOGGING` ($65.0 \le T < 80.0$)
+  * `CAPABILITY_STRIPPING` ($50.0 \le T < 65.0$, micro-segmenting unauthorized permissions to maintain tool availability safely)
+  * `REVOKE_AND_QUARANTINE` ($T < 50.0$)
 
 ---
 
 ## 3. Data Contracts & Structured JSON Output
-For every monitored tool event, TrustGuard-MCP produces a standardized JSON response:
+For every monitored tool event, TrustGuard-MCP produces an enriched, standardized CTI JSON response:
 
 ```json
 {
@@ -96,6 +106,22 @@ For every monitored tool event, TrustGuard-MCP produces a standardized JSON resp
   "permission_risk": 0.90,
   "classification": "RUG_PULL",
   "recommended_action": "BLOCK",
+  "graduated_mitigation": "REVOKE_AND_QUARANTINE",
+  "threat_classification": "TPA_METADATA_POISONING",
+  "threat_name": "LLM Tool Poisoning",
+  "severity": "CRITICAL",
+  "mitre_atlas": {
+    "technique_id": "AML.T0054",
+    "technique_name": "LLM Tool Poisoning",
+    "tactic": "Persistence / Execution",
+    "url": "https://atlas.mitre.org/techniques/AML.T0054",
+    "cve_reference": "CWE-94: Improper Control of Generation of Code ('Code Injection')"
+  },
+  "mitre_attack": {
+    "technique_id": "T1059",
+    "technique_name": "Command and Scripting Interpreter",
+    "tactic": "Execution"
+  },
   "evidence": [
     "Tool description changed (semantic drift: 0.38)",
     "Added DANGEROUS permissions: ['read_user_files', 'execute_system_command']",
@@ -109,9 +135,16 @@ For every monitored tool event, TrustGuard-MCP produces a standardized JSON resp
       "relevance_score": 0.91
     }
   ],
+  "stix_bundle": {
+    "type": "bundle",
+    "id": "bundle--3d7b81c2-...",
+    "spec_version": "2.1",
+    "objects": ["..."]
+  },
   "explanation": [
     "Trust score degraded below critical threshold (28.0 < 50.0).",
-    "Action policy BLOCK enforced."
+    "Policy Action BLOCK enforced immediately. Mitigated via REVOKE_AND_QUARANTINE."
   ]
 }
 ```
+
