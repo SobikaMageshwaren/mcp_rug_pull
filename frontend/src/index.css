@@ -397,4 +397,36 @@ code, pre {
   box-shadow: 0 0 10px rgba(59, 130, 246, 0.4);
 }
 
+/* Vector Canvas Grid */
+.vector-canvas {
+  background: radial-gradient(circle at 50% 50%, rgba(15, 23, 42, 0.9) 0%, rgba(7, 11, 20, 0.98) 100%);
+  border: 1px solid rgba(56, 189, 248, 0.15);
+  border-radius: 10px;
+  overflow: hidden;
+  position: relative;
+}
+
+/* XAI Waterfall Bar Item */
+.xai-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  transition: all 0.2s ease;
+}
+
+.xai-bar:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(56, 189, 248, 0.3);
+}
+
+/* Collapsible Sidebar Transitions */
+.sidebar-container {
+  transition: width 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+
 
