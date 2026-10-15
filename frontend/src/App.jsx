@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import emailjs from '@emailjs/browser';
 import {
   Shield, AlertTriangle, CheckCircle, XCircle, Search, Activity, Cpu,
   Terminal, ArrowRight, RefreshCw, Lock, ExternalLink, Play, Layers,
@@ -6,7 +7,7 @@ import {
   ShieldCheck, ShieldAlert, BarChart3, TrendingDown, X, Flame, Radio,
   Zap, Radar, Gauge, ChevronRight, BarChart2, GitCommit, FileText,
   Compass, HelpCircle, ChevronLeft, ArrowDownRight, ArrowUpRight,
-  Mail, Send, Bell, Key, Scissors, CheckCircle2, AlertOctagon
+  Mail, Send, Bell, Key, Scissors, CheckCircle2, AlertOctagon, Settings, Volume2, VolumeX
 } from 'lucide-react';
 
 const API_BASE = "http://localhost:8000";
@@ -341,8 +342,8 @@ export default function App() {
   const [isSimulating, setIsSimulating] = useState(false);
   const [backendOnline, setBackendOnline] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [activeView, setActiveView] = useState("investigation"); // 'investigation' | 'vector_space' | 'agentic_ai' | 'xai' | 'ml_models' | 'attacks'
-  const [activeDrawer, setActiveDrawer] = useState(null); // 'fleet' | 'matrix' | 'stix' | 'rag' | 'alerts' | null
+  const [activeView, setActiveView] = useState("investigation");
+  const [activeDrawer, setActiveDrawer] = useState(null);
   const [selectedMetric, setSelectedMetric] = useState("f1");
   const [copiedStix, setCopiedStix] = useState(false);
 
@@ -352,11 +353,172 @@ export default function App() {
   const [actionStatusMsg, setActionStatusMsg] = useState(null);
   const [isDispatching, setIsDispatching] = useState(false);
 
-  // Approval Audit History: { id, action, operator, timestamp, incidentTicket, toolId }
+  // Approval Audit History
   const [approvalHistory, setApprovalHistory] = useState([]);
 
   // Investigation Result State
   const [simResult, setSimResult] = useState(null);
+
+  // Sound toggle
+  const [soundEnabled, setSoundEnabled] = useState(true);
+
+  // EmailJS Configuration (persisted in localStorage)
+  const [ejsConfig, setEjsConfig] = useState(() => {
+    try {
+      const saved = localStorage.getItem('trustguard_emailjs_config');
+      return saved ? JSON.parse(saved) : {
+        serviceId: '',
+        templateId: '',
+        publicKey: '',
+        configured: false
+      };
+    } catch { return { serviceId: '', templateId: '', publicKey: '', configured: false }; }
+  });
+  const [ejsDraft, setEjsDraft] = useState({ ...ejsConfig });
+  const [ejsTestStatus, setEjsTestStatus] = useState(null);
+
+  // ========== WEB AUDIO API ALERT SOUND ==========
+  const playAlertSound = useCallback((type = 'critical') => {
+    if (!soundEnabled) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const freqs = type === 'critical'
+        ? [880, 1100, 880, 1100, 880]  // high urgency double beep
+        : [660, 880, 660];              // warning single beep
+
+      freqs.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime);
+        gain.gain.setValueAtTime(0, ctx.currentTime + i * 0.2);
+        gain.gain.linearRampToValueAtTime(0.4, ctx.currentTime + i * 0.2 + 0.02);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + i * 0.2 + 0.14);
+        osc.start(ctx.currentTime + i * 0.2);
+        osc.stop(ctx.currentTime + i * 0.2 + 0.15);
+      });
+    } catch (e) { console.warn('Audio not available', e); }
+  }, [soundEnabled]);
+
+  // ========== EMAILJS REAL SEND ==========
+  const sendEmailAlert = useCallback(async (params) => {
+    const {
+      toEmail = MAINTENANCE_EMAIL,
+      incidentTicket,
+      toolId,
+      severity = 'CRITICAL',
+      trustDelta = 0,
+      classification,
+      mitigationEnforced,
+      socketsTerminated = 0,
+      permissionsStripped = 0,
+      auditId = '',
+      actionType = '',
+      message = ''
+    } = params;
+
+    // Try EmailJS if configured
+    if (ejsConfig.configured && ejsConfig.publicKey && ejsConfig.serviceId && ejsConfig.templateId) {
+      try {
+        await emailjs.send(
+          ejsConfig.serviceId,
+          ejsConfig.templateId,
+          {
+            to_email: toEmail,
+            to_name: 'TrustGuard-MCP Maintenance',
+            from_name: 'TrustGuard-MCP SOC Defense',
+            reply_to: 'soc-defense@trustguard-mcp.internal',
+            incident_ticket: incidentTicket,
+            tool_id: toolId,
+            severity,
+            trust_delta: trustDelta,
+            classification,
+            mitigation: mitigationEnforced,
+            sockets_terminated: socketsTerminated,
+            permissions_stripped: permissionsStripped,
+            audit_id: auditId,
+            action_type: actionType,
+            timestamp: new Date().toLocaleString(),
+            message: message || `[${severity}] TrustGuard-MCP detected ${classification} on tool '${toolId}'. Trust delta: ${trustDelta}. Mitigation: ${mitigationEnforced}. Incident: ${incidentTicket}.`
+          },
+          ejsConfig.publicKey
+        );
+        return { method: 'emailjs', success: true };
+      } catch (err) {
+        console.warn('EmailJS send failed, falling back to Gmail compose', err);
+      }
+    }
+
+    // Fallback: Open Gmail compose with pre-filled content
+    const subject = encodeURIComponent(`[TRUSTGUARD-MCP ${severity}] Incident ${incidentTicket} on ${toolId}`);
+    const body = encodeURIComponent(
+      `TRUSTGUARD-MCP SECURITY ALERT\n` +
+      `====================================\n` +
+      `Incident      : ${incidentTicket}\n` +
+      `Tool ID       : ${toolId}\n` +
+      `Severity      : ${severity}\n` +
+      `Classification: ${classification}\n` +
+      `Trust Delta   : ${trustDelta} pts\n` +
+      `Mitigation    : ${mitigationEnforced}\n` +
+      `Sockets Severed: ${socketsTerminated}\n` +
+      `Perms Revoked : ${permissionsStripped}\n` +
+      (auditId ? `Audit ID      : ${auditId}\n` : '') +
+      (actionType ? `Operator Action: ${actionType}\n` : '') +
+      `Timestamp     : ${new Date().toLocaleString()}\n` +
+      `====================================\n` +
+      `System: ADAPTIVE TRUST MONITORING FOR RUG-PULL ATTACK DETECTION\n` +
+      `        IN MCP-BASED LLM AGENTS USING AGENTIC AI AND RAG-BASED\n` +
+      `        THREAT INTELLIGENCE \u2014 TRUSTGUARD-MCP`
+    );
+    window.open(`https://mail.google.com/mail/?view=cm&to=${toEmail}&su=${subject}&body=${body}`, '_blank');
+    return { method: 'gmail_compose', success: true };
+  }, [ejsConfig]);
+
+  const saveEjsConfig = () => {
+    const cfg = { ...ejsDraft, configured: !!(ejsDraft.serviceId && ejsDraft.templateId && ejsDraft.publicKey) };
+    setEjsConfig(cfg);
+    localStorage.setItem('trustguard_emailjs_config', JSON.stringify(cfg));
+    setActiveDrawer(null);
+    setEjsTestStatus(null);
+  };
+
+  const testEmailJs = async () => {
+    setEjsTestStatus('sending');
+    if (!ejsDraft.serviceId || !ejsDraft.templateId || !ejsDraft.publicKey) {
+      setEjsTestStatus('missing_fields');
+      return;
+    }
+    try {
+      await emailjs.send(
+        ejsDraft.serviceId, ejsDraft.templateId,
+        {
+          to_email: MAINTENANCE_EMAIL,
+          to_name: 'TrustGuard-MCP Maintenance',
+          from_name: 'TrustGuard-MCP SOC Defense',
+          reply_to: 'soc-defense@trustguard-mcp.internal',
+          incident_ticket: 'TEST-001',
+          tool_id: 'mcp_test_tool',
+          severity: 'TEST',
+          trust_delta: '-87.5',
+          classification: 'RUG_PULL',
+          mitigation: 'LEVEL_3_TERMINATE_AND_QUARANTINE',
+          sockets_terminated: '2',
+          permissions_stripped: '3',
+          audit_id: `AUD-TEST-${Date.now()}`,
+          action_type: 'TEST_DISPATCH',
+          timestamp: new Date().toLocaleString(),
+          message: 'Test alert from TrustGuard-MCP SOC Defense System. If you receive this, email integration is working correctly.'
+        },
+        ejsDraft.publicKey
+      );
+      setEjsTestStatus('success');
+    } catch (err) {
+      console.error('EmailJS test failed:', err);
+      setEjsTestStatus('error');
+    }
+  };
 
   useEffect(() => {
     fetch(`${API_BASE}/health`)
@@ -446,13 +608,59 @@ export default function App() {
           graduated_mitigation: data.graduated_mitigation
         } : t));
         fetchAlerts();
+        // Play alert sound if threat detected
+        if (data.classification === 'RUG_PULL' || data.classification === 'SUSPICIOUS') {
+          playAlertSound(data.classification === 'RUG_PULL' ? 'critical' : 'warning');
+          // Auto-dispatch email for real threat
+          if (data.alert_notification?.alert_triggered) {
+            await sendEmailAlert({
+              incidentTicket: data.alert_notification?.incident_ticket || `INC-${Date.now()}`,
+              toolId: baseTool.tool_id,
+              severity: data.severity || 'CRITICAL',
+              trustDelta: (data.current_trust_score - 100).toFixed(1),
+              classification: data.classification,
+              mitigationEnforced: data.graduated_mitigation,
+              socketsTerminated: data.aftermath?.sockets_terminated || 0,
+              permissionsStripped: data.aftermath?.permissions_stripped?.length || 0,
+              message: data.alert_notification?.message
+            });
+          }
+        }
       } else {
         const fallback = createFallbackResult(simScenario, baseTool, attackCase);
         setSimResult(fallback);
+        if (fallback.classification === 'RUG_PULL' || fallback.classification === 'SUSPICIOUS') {
+          playAlertSound(fallback.classification === 'RUG_PULL' ? 'critical' : 'warning');
+          await sendEmailAlert({
+            incidentTicket: fallback.alert_notification?.incident_ticket,
+            toolId: baseTool.tool_id,
+            severity: fallback.severity,
+            trustDelta: (fallback.current_trust_score - 100).toFixed(1),
+            classification: fallback.classification,
+            mitigationEnforced: fallback.graduated_mitigation,
+            socketsTerminated: fallback.aftermath?.sockets_terminated || 0,
+            permissionsStripped: fallback.aftermath?.permissions_stripped?.length || 0,
+            message: fallback.alert_notification?.message
+          });
+        }
       }
     } catch {
       const fallback = createFallbackResult(simScenario, baseTool, attackCase);
       setSimResult(fallback);
+      if (fallback.classification === 'RUG_PULL' || fallback.classification === 'SUSPICIOUS') {
+        playAlertSound(fallback.classification === 'RUG_PULL' ? 'critical' : 'warning');
+        await sendEmailAlert({
+          incidentTicket: fallback.alert_notification?.incident_ticket,
+          toolId: baseTool.tool_id,
+          severity: fallback.severity,
+          trustDelta: (fallback.current_trust_score - 100).toFixed(1),
+          classification: fallback.classification,
+          mitigationEnforced: fallback.graduated_mitigation,
+          socketsTerminated: fallback.aftermath?.sockets_terminated || 0,
+          permissionsStripped: fallback.aftermath?.permissions_stripped?.length || 0,
+          message: fallback.alert_notification?.message
+        });
+      }
     } finally {
       setIsSimulating(false);
     }
@@ -461,6 +669,7 @@ export default function App() {
   // Re-dispatch Alert to sobikamageshwaren@gmail.com
   const handleDispatchAlert = async (ticketId, toolId, severity, message, aftermath) => {
     setIsDispatching(true);
+    playAlertSound(severity === 'CRITICAL' ? 'critical' : 'warning');
     try {
       const res = await fetch(`${API_BASE}/alert/dispatch`, {
         method: "POST",
@@ -475,17 +684,40 @@ export default function App() {
         })
       });
 
+      // Send real email
+      await sendEmailAlert({
+        incidentTicket: ticketId || `INC-20261015-${selectedToolId.toUpperCase().slice(0, 12)}`,
+        toolId: toolId || selectedToolId,
+        severity: severity || 'CRITICAL',
+        trustDelta: aftermath?.trust_delta ?? (activeResult.current_trust_score - 100).toFixed(1),
+        classification: activeResult.classification,
+        mitigationEnforced: aftermath?.mitigation_enforced || activeResult.graduated_mitigation,
+        socketsTerminated: aftermath?.sockets_terminated ?? 0,
+        permissionsStripped: aftermath?.permissions_stripped?.length ?? 0,
+        message: message
+      });
+
       if (res.ok) {
-        setActionStatusMsg(`Incident alert successfully dispatched to ${MAINTENANCE_EMAIL} (SMTP Relay: 250 OK)`);
+        setActionStatusMsg(`✉️ Incident alert dispatched to ${MAINTENANCE_EMAIL}. Check your Gmail inbox.`);
         fetchAlerts();
       } else {
-        setActionStatusMsg(`Alert queued and recorded for ${MAINTENANCE_EMAIL}`);
+        setActionStatusMsg(`✉️ Alert queued for ${MAINTENANCE_EMAIL} — check Gmail compose window.`);
       }
     } catch {
-      setActionStatusMsg(`Alert queued and recorded for ${MAINTENANCE_EMAIL}`);
+      await sendEmailAlert({
+        incidentTicket: ticketId || `INC-20261015-${selectedToolId.toUpperCase().slice(0, 12)}`,
+        toolId: toolId || selectedToolId,
+        severity: severity || 'CRITICAL',
+        trustDelta: 0,
+        classification: 'UNKNOWN',
+        mitigationEnforced: 'N/A',
+        socketsTerminated: 0,
+        permissionsStripped: 0
+      });
+      setActionStatusMsg(`✉️ Gmail compose opened for ${MAINTENANCE_EMAIL}.`);
     } finally {
       setIsDispatching(false);
-      setTimeout(() => setActionStatusMsg(null), 5000);
+      setTimeout(() => setActionStatusMsg(null), 7000);
     }
   };
 
@@ -509,6 +741,9 @@ export default function App() {
 
     // Always dismiss banner immediately on action
     setAlertBannerDismissed(true);
+
+    // Play action-specific sound
+    playAlertSound(actionType === 'APPROVE_EXCEPTION' ? 'warning' : 'critical');
 
     try {
       await fetch(`${API_BASE}/alert/action`, {
@@ -547,6 +782,21 @@ export default function App() {
       } : null);
 
       setActionStatusMsg(`✓ Human Approval granted by ${MAINTENANCE_EMAIL} for ${resolvedTool}. Trust restored to 85.0. Audit ID: ${auditEntry.id}`);
+
+      // Send real email for approval
+      await sendEmailAlert({
+        incidentTicket: resolvedTicket,
+        toolId: resolvedTool,
+        severity: 'OPERATIONAL',
+        trustDelta: '-15.0 (Restored to 85.0)',
+        classification: 'EXCEPTION_APPROVED',
+        mitigationEnforced: 'LEVEL_1_MONITOR',
+        socketsTerminated: 0,
+        permissionsStripped: 0,
+        auditId: auditEntry.id,
+        actionType: 'APPROVE_EXCEPTION',
+        message: `Human Approval Exception granted by ${MAINTENANCE_EMAIL} for ${resolvedTool}. Tool trust restored to 85.0. Continued monitoring activated.`
+      });
     } else {
       setTools(prev => prev.map(t => t.tool_id === resolvedTool ? {
         ...t,
@@ -573,6 +823,21 @@ export default function App() {
       } : null);
 
       setActionStatusMsg(`⚠ Emergency Quarantine enforced on ${resolvedTool} by ${MAINTENANCE_EMAIL}. Sockets dropped. Audit ID: ${auditEntry.id}`);
+
+      // Send real email for quarantine
+      await sendEmailAlert({
+        incidentTicket: resolvedTicket,
+        toolId: resolvedTool,
+        severity: 'CRITICAL',
+        trustDelta: '-100.0',
+        classification: 'RUG_PULL_QUARANTINED',
+        mitigationEnforced: 'LEVEL_3_TERMINATE_AND_QUARANTINE',
+        socketsTerminated: 2,
+        permissionsStripped: 3,
+        auditId: auditEntry.id,
+        actionType: 'QUARANTINE_SEVER',
+        message: `CRITICAL: Emergency quarantine enforced by ${MAINTENANCE_EMAIL} on ${resolvedTool}. All sockets severed. Credentials revoked. Tool terminated.`
+      });
     }
 
     fetchAlerts();
@@ -1001,21 +1266,59 @@ export default function App() {
           </div>
         </div>
 
-        {/* System Health */}
-        {sidebarOpen && (
-          <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "0.85rem", fontSize: "0.72rem", color: "var(--text-dim)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.25rem" }}>
-              <span>FastAPI Backend</span>
-              <span style={{ color: backendOnline ? "#10b981" : "#ef4444", fontWeight: 600 }}>
-                {backendOnline ? "Online (8000)" : "Offline"}
-              </span>
-            </div>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <span>React Web</span>
-              <span style={{ color: "var(--accent-cyan)", fontWeight: 600 }}>Active (5173)</span>
-            </div>
+        {/* System Health + Controls */}
+        <div style={{ borderTop: "1px solid var(--border-color)", paddingTop: "0.75rem" }}>
+          {/* Sound Toggle + Email Settings */}
+          <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.6rem" }}>
+            <button
+              onClick={() => setSoundEnabled(p => !p)}
+              title={soundEnabled ? "Mute alert sounds" : "Enable alert sounds"}
+              style={{
+                flex: 1,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: "0.3rem",
+                background: soundEnabled ? "rgba(16,185,129,0.12)" : "rgba(255,255,255,0.04)",
+                border: `1px solid ${soundEnabled ? 'rgba(16,185,129,0.4)' : 'var(--border-color)'}`,
+                borderRadius: "6px", padding: "0.4rem", cursor: "pointer",
+                color: soundEnabled ? "#10b981" : "var(--text-dim)", fontSize: "0.7rem", fontWeight: 700
+              }}
+            >
+              {soundEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
+              {sidebarOpen && <span>{soundEnabled ? "Sound ON" : "Muted"}</span>}
+            </button>
+            <button
+              onClick={() => { setEjsDraft({...ejsConfig}); setActiveDrawer('emailjs_settings'); }}
+              title="Configure Email Alerts (EmailJS)"
+              style={{
+                flex: 1,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: "0.3rem",
+                background: ejsConfig.configured ? "rgba(56,189,248,0.12)" : "rgba(239,68,68,0.08)",
+                border: `1px solid ${ejsConfig.configured ? 'rgba(56,189,248,0.4)' : 'rgba(239,68,68,0.3)'}`,
+                borderRadius: "6px", padding: "0.4rem", cursor: "pointer",
+                color: ejsConfig.configured ? "var(--accent-cyan)" : "#ef4444", fontSize: "0.7rem", fontWeight: 700
+              }}
+            >
+              <Settings size={13} />
+              {sidebarOpen && <span>{ejsConfig.configured ? "Email ✓" : "Setup Email"}</span>}
+            </button>
           </div>
-        )}
+
+          {sidebarOpen && (
+            <div style={{ fontSize: "0.68rem", color: "var(--text-dim)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.2rem" }}>
+                <span>FastAPI Backend</span>
+                <span style={{ color: backendOnline ? "#10b981" : "#ef4444", fontWeight: 600 }}>
+                  {backendOnline ? "Online" : "Offline"}
+                </span>
+              </div>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span>Email Channel</span>
+                <span style={{ color: ejsConfig.configured ? "#10b981" : "#f59e0b", fontWeight: 600 }}>
+                  {ejsConfig.configured ? "EmailJS Live" : "Gmail Compose"}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
       </aside>
 
       {/* ================= MAIN SCREEN (CENTER STAGE) ================= */}
@@ -2275,6 +2578,113 @@ export default function App() {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ================= EMAILJS SETTINGS DRAWER ================= */}
+      {activeDrawer === 'emailjs_settings' && (
+        <div className="drawer-panel" style={{ width: "500px" }}>
+          <div style={{ padding: "1.1rem 1.25rem", borderBottom: "1px solid var(--border-color)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+              <Settings size={18} color="var(--accent-cyan)" />
+              <div>
+                <h2 style={{ fontSize: "1rem", fontWeight: 700, color: "#f8fafc" }}>Email Alert Configuration</h2>
+                <div style={{ fontSize: "0.68rem", color: "var(--text-muted)" }}>Connect EmailJS to send real alerts to <span style={{ color: "var(--accent-cyan)", fontFamily: "var(--font-mono)" }}>{MAINTENANCE_EMAIL}</span></div>
+              </div>
+            </div>
+            <button onClick={() => setActiveDrawer(null)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer" }}><X size={18} /></button>
+          </div>
+
+          <div style={{ flex: 1, overflowY: "auto", padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" }}>
+
+            {/* Setup Guide */}
+            <div style={{ backgroundColor: "rgba(56,189,248,0.06)", border: "1px solid rgba(56,189,248,0.25)", borderRadius: "8px", padding: "1rem" }}>
+              <div style={{ fontSize: "0.78rem", fontWeight: 700, color: "var(--accent-cyan)", marginBottom: "0.6rem" }}>⚡ Quick Setup (Free — 200 emails/month)</div>
+              <ol style={{ fontSize: "0.72rem", color: "var(--text-muted)", lineHeight: 1.8, paddingLeft: "1.1rem", margin: 0 }}>
+                <li>Go to <a href="https://www.emailjs.com" target="_blank" rel="noreferrer" style={{ color: "var(--accent-cyan)" }}>emailjs.com</a> → Sign Up Free</li>
+                <li>Click <strong style={{ color: "#f8fafc" }}>Email Services</strong> → Add New Service → choose <strong style={{ color: "#f8fafc" }}>Gmail</strong> → Connect your Gmail → copy <strong style={{ color: "#38bdf8" }}>Service ID</strong></li>
+                <li>Click <strong style={{ color: "#f8fafc" }}>Email Templates</strong> → Create New Template</li>
+                <li>Set <strong style={{ color: "#f8fafc" }}>To Email</strong> field to <code style={{ color: "#10b981", fontSize: "0.7rem" }}>{'{{'} to_email {'}}'}  </code></li>
+                <li>In template body add: <code style={{ color: "#10b981", fontSize: "0.68rem" }}>{'{{'} message {'}}'}  </code> — copy <strong style={{ color: "#38bdf8" }}>Template ID</strong></li>
+                <li>Go to <strong style={{ color: "#f8fafc" }}>Account</strong> → copy your <strong style={{ color: "#38bdf8" }}>Public Key</strong></li>
+                <li>Paste all three below and click <strong style={{ color: "#10b981" }}>Save & Activate</strong></li>
+              </ol>
+            </div>
+
+            {/* Credential Inputs */}
+            {[
+              { key: 'serviceId', label: 'Service ID', placeholder: 'service_xxxxxxx', hint: 'From Email Services tab' },
+              { key: 'templateId', label: 'Template ID', placeholder: 'template_xxxxxxx', hint: 'From Email Templates tab' },
+              { key: 'publicKey', label: 'Public Key', placeholder: 'xxxxxxxxxxxxxxxxxxxxxx', hint: 'From Account → API Keys' }
+            ].map(field => (
+              <div key={field.key}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.3rem" }}>
+                  <label style={{ fontSize: "0.75rem", fontWeight: 700, color: "#f8fafc" }}>{field.label}</label>
+                  <span style={{ fontSize: "0.65rem", color: "var(--text-dim)" }}>{field.hint}</span>
+                </div>
+                <input
+                  type="text"
+                  value={ejsDraft[field.key] || ''}
+                  onChange={e => setEjsDraft(p => ({ ...p, [field.key]: e.target.value }))}
+                  placeholder={field.placeholder}
+                  style={{
+                    width: "100%", boxSizing: "border-box",
+                    backgroundColor: "rgba(11,15,25,0.9)",
+                    border: `1px solid ${ejsDraft[field.key] ? 'rgba(56,189,248,0.4)' : 'var(--border-color)'}`,
+                    borderRadius: "6px", padding: "0.55rem 0.75rem",
+                    color: "#f8fafc", fontSize: "0.82rem", fontFamily: "var(--font-mono)",
+                    outline: "none"
+                  }}
+                />
+              </div>
+            ))}
+
+            {/* Test Status */}
+            {ejsTestStatus && (
+              <div style={{
+                padding: "0.65rem 0.85rem", borderRadius: "6px", fontSize: "0.75rem", fontWeight: 600,
+                backgroundColor: ejsTestStatus === 'success' ? 'rgba(16,185,129,0.12)' : ejsTestStatus === 'error' ? 'rgba(239,68,68,0.12)' : 'rgba(56,189,248,0.08)',
+                border: `1px solid ${ejsTestStatus === 'success' ? 'rgba(16,185,129,0.4)' : ejsTestStatus === 'error' ? 'rgba(239,68,68,0.4)' : 'rgba(56,189,248,0.3)'}`,
+                color: ejsTestStatus === 'success' ? '#10b981' : ejsTestStatus === 'error' ? '#ef4444' : 'var(--accent-cyan)'
+              }}>
+                {ejsTestStatus === 'sending' && '⏳ Sending test email to ' + MAINTENANCE_EMAIL + '...'}
+                {ejsTestStatus === 'success' && '✅ Test email sent! Check your Gmail inbox at ' + MAINTENANCE_EMAIL}
+                {ejsTestStatus === 'error' && '❌ Failed — check your Service ID, Template ID & Public Key. Also ensure Gmail is connected in EmailJS.'}
+                {ejsTestStatus === 'missing_fields' && '⚠ Please fill in all three fields before testing.'}
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div style={{ display: "flex", gap: "0.6rem" }}>
+              <button
+                onClick={testEmailJs}
+                disabled={ejsTestStatus === 'sending'}
+                style={{
+                  flex: 1, padding: "0.6rem", borderRadius: "6px", fontSize: "0.78rem", fontWeight: 700,
+                  background: "rgba(56,189,248,0.12)", border: "1px solid rgba(56,189,248,0.4)",
+                  color: "var(--accent-cyan)", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem"
+                }}
+              >
+                <Send size={13} /> {ejsTestStatus === 'sending' ? 'Sending...' : 'Send Test Email'}
+              </button>
+              <button
+                onClick={saveEjsConfig}
+                style={{
+                  flex: 1, padding: "0.6rem", borderRadius: "6px", fontSize: "0.78rem", fontWeight: 700,
+                  background: "linear-gradient(135deg, #10b981, #059669)", border: "none",
+                  color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "0.4rem"
+                }}
+              >
+                <CheckCircle2 size={13} /> Save & Activate
+              </button>
+            </div>
+
+            {ejsConfig.configured && (
+              <div style={{ backgroundColor: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.3)", borderRadius: "6px", padding: "0.65rem", fontSize: "0.72rem", color: "#10b981", textAlign: "center" }}>
+                ✅ EmailJS Active — Real emails dispatching to {MAINTENANCE_EMAIL}
               </div>
             )}
           </div>
