@@ -19,13 +19,15 @@ class SecurityInvestigationAgent:
         trust_engine: AdaptiveTrustEngine = None,
         anomaly_detector: BehavioralAnomalyDetector = None,
         metadata_analyzer: MetadataAnalyzer = None,
-        threat_retriever: CTIThreatRetriever = None
+        threat_retriever: CTIThreatRetriever = None,
+        threat_ml_classifier: Any = None
     ):
         self.tools = InvestigationTools(
             trust_engine=trust_engine,
             anomaly_detector=anomaly_detector,
             metadata_analyzer=metadata_analyzer,
-            threat_retriever=threat_retriever
+            threat_retriever=threat_retriever,
+            threat_ml_classifier=threat_ml_classifier
         )
 
     def investigate(self, baseline_tool: Dict[str, Any], current_event: Dict[str, Any]) -> Dict[str, Any]:
@@ -91,7 +93,32 @@ class SecurityInvestigationAgent:
 
         graduated_mitigation = trust_res.get("graduated_mitigation", "STANDARD_EXECUTION")
 
-        # 7. Generate STIX 2.1 Threat Intelligence Bundle
+        # 7. Supervised Multi-Modal Threat ML Prediction (Random Forest)
+        invoked_tools.append("predict_threat_ml")
+        beh_curr = current_event.get("baseline_behavior", {})
+        beh_base = baseline_tool.get("baseline_behavior", {}) if baseline_tool else {}
+        base_call_rate = max(beh_base.get("calls_per_minute", 1.0), 0.1)
+        base_out_size = max(beh_base.get("output_length_mean", 100.0), 0.1)
+
+        call_ratio = beh_curr.get("calls_per_minute", 1.0) / base_call_rate
+        fail_rate = beh_curr.get("failure_rate", 0.0)
+        out_ratio = beh_curr.get("output_length_mean", 100.0) / base_out_size
+
+        ml_features = [
+            float(drift_val),
+            float(meta_res.get("injection_ml_score", 0.0)),
+            float(perm_risk),
+            float(len(perm_res.get("high_risk_added", []))),
+            float(len(perm_res.get("added_permissions", []))),
+            1.0 if meta_res.get("is_endpoint_changed") else 0.0,
+            1.0 if meta_res.get("is_suspicious_endpoint") else 0.0,
+            float(call_ratio),
+            float(fail_rate),
+            float(out_ratio)
+        ]
+        threat_ml_result = self.tools.predict_threat_ml(ml_features)
+
+        # 8. Generate STIX 2.1 Threat Intelligence Bundle
         invoked_tools.append("export_stix_bundle")
         stix_bundle = self.tools.export_stix_bundle(
             tool_id=tool_id,
@@ -101,7 +128,7 @@ class SecurityInvestigationAgent:
             citations=threat_intel
         )
 
-        # 8. Generate final explainable security report
+        # 9. Generate final explainable security report
         invoked_tools.append("generate_security_report")
         report = self.tools.generate_security_report(
             tool_id=tool_id,
@@ -128,6 +155,12 @@ class SecurityInvestigationAgent:
             "severity": threat_info["severity"],
             "mitre_atlas": threat_info["mitre_atlas"],
             "mitre_attack": threat_info["mitre_attack"],
+            "ml_threat_prediction": threat_ml_result,
+            "ml_prompt_injection": {
+                "score": meta_res.get("injection_ml_score", 0.0),
+                "is_threat": meta_res.get("is_injection_threat", False),
+                "model": "PromptInjectionMLClassifier (TF-IDF + Calibrated LogisticRegression)"
+            },
             "stix_bundle": stix_bundle,
             "evidence": evidence if evidence else ["Tool behavior and metadata match benign baseline."],
             "threat_intelligence": threat_intel,
@@ -135,8 +168,11 @@ class SecurityInvestigationAgent:
             "explanation": [
                 f"Previous trust score: {trust_res['previous_trust_score']}, Current trust score: {trust_res['current_trust_score']}",
                 f"Classification: {trust_res['classification']}, Recommended action: {trust_res['recommended_action']}, Graduated mitigation: {graduated_mitigation}",
+                f"Supervised ML Threat Model: {threat_ml_result['predicted_threat_class']} ({threat_ml_result['confidence']*100:.1f}% confidence)",
+                f"NLP Prompt Injection ML Score: {meta_res.get('injection_ml_score', 0.0):.3f} (threat: {meta_res.get('is_injection_threat', False)})",
                 f"Threat taxonomy: {threat_info['threat_name']} (MITRE ATLAS: {threat_info['mitre_atlas']['technique_id']})",
                 f"Risk components -> Semantic: {trust_res['risk_breakdown']['semantic_risk']}, Permission: {trust_res['risk_breakdown']['permission_risk']}, Behavioral: {trust_res['risk_breakdown']['behavioral_risk']}"
             ]
         }
+
 

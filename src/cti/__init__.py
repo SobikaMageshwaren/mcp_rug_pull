@@ -9,10 +9,12 @@ from src.cti.threat_taxonomy import (
     classify_event_threat
 )
 from src.cti.stix_exporter import STIXThreatExporter
+from src.cti.threat_classifier_ml import MultiModalThreatMLClassifier
 
 __all__ = [
     "ThreatTaxonomyClassifier",
     "ThreatCategory",
     "classify_event_threat",
-    "STIXThreatExporter"
+    "STIXThreatExporter",
+    "MultiModalThreatMLClassifier"
 ]

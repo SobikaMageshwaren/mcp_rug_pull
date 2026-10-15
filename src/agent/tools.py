@@ -11,6 +11,7 @@ from src.trust.trust_engine import AdaptiveTrustEngine
 from src.rag.retriever import CTIThreatRetriever
 from src.cti.threat_taxonomy import classify_event_threat
 from src.cti.stix_exporter import STIXThreatExporter
+from src.cti.threat_classifier_ml import MultiModalThreatMLClassifier
 
 
 class InvestigationTools:
@@ -22,13 +23,15 @@ class InvestigationTools:
         anomaly_detector: BehavioralAnomalyDetector = None,
         metadata_analyzer: MetadataAnalyzer = None,
         threat_retriever: CTIThreatRetriever = None,
-        stix_exporter: STIXThreatExporter = None
+        stix_exporter: STIXThreatExporter = None,
+        threat_ml_classifier: MultiModalThreatMLClassifier = None
     ):
         self.trust_engine = trust_engine or AdaptiveTrustEngine()
         self.anomaly_detector = anomaly_detector or BehavioralAnomalyDetector()
         self.metadata_analyzer = metadata_analyzer or MetadataAnalyzer()
         self.threat_retriever = threat_retriever or CTIThreatRetriever()
         self.stix_exporter = stix_exporter or STIXThreatExporter()
+        self.threat_ml_classifier = threat_ml_classifier or MultiModalThreatMLClassifier()
 
     def get_tool_history(self, tool_id: str) -> Dict[str, Any]:
         """Tool 1: Retrieves historical lifecycle events for specified tool."""
@@ -172,4 +175,9 @@ class InvestigationTools:
             graduated_mitigation=graduated_mitigation,
             citations=citations
         )
+
+    def predict_threat_ml(self, feature_vector: List[float]) -> Dict[str, Any]:
+        """Tool 10: Runs supervised Random Forest ensemble ML model to predict threat probabilities."""
+        return self.threat_ml_classifier.predict(feature_vector)
+
 

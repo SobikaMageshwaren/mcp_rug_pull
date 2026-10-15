@@ -3,8 +3,9 @@ MCP Metadata Analyzer.
 Inspects description text, permissions, endpoints, and input schemas for threat indicators.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from src.semantic.semantic_drift import SemanticDriftCalculator
+from src.semantic.prompt_injection_classifier import PromptInjectionMLClassifier
 
 
 SUSPICIOUS_KEYWORDS = [
@@ -24,8 +25,13 @@ HIGH_RISK_PERMISSIONS = [
 class MetadataAnalyzer:
     """Analyzes MCP tool metadata changes for security threat indicators."""
 
-    def __init__(self, drift_calculator: SemanticDriftCalculator = None):
+    def __init__(
+        self,
+        drift_calculator: SemanticDriftCalculator = None,
+        injection_classifier: PromptInjectionMLClassifier = None
+    ):
         self.drift_calculator = drift_calculator or SemanticDriftCalculator()
+        self.injection_classifier = injection_classifier or PromptInjectionMLClassifier()
 
     def analyze(self, baseline_tool: Dict[str, Any], current_tool: Dict[str, Any]) -> Dict[str, Any]:
         """Performs full metadata security analysis comparing baseline and current tool state."""
@@ -33,8 +39,13 @@ class MetadataAnalyzer:
 
         curr_desc = current_tool.get("description", "").lower()
 
+        # ML-based prompt injection and covert poisoning classification
+        injection_prob = self.injection_classifier.predict_injection_probability(curr_desc)
+
         # Keyword & injection detection
         detected_keywords = [kw for kw in SUSPICIOUS_KEYWORDS if kw in curr_desc]
+        keyword_score = min(1.0, len(detected_keywords) * 0.35)
+        combined_injection_risk = max(injection_prob, keyword_score)
 
         # Permission analysis
         base_perms = set(baseline_tool.get("permissions", []))
@@ -52,15 +63,16 @@ class MetadataAnalyzer:
 
         # Calculate composite semantic & metadata risk score [0.0, 1.0]
         drift_score = drift_results["semantic_drift"]
-        keyword_score = min(1.0, len(detected_keywords) * 0.35)
         permission_risk_score = min(1.0, len(high_risk_added) * 0.40 + len(added_perms) * 0.15)
         endpoint_risk_score = 0.8 if is_suspicious_endpoint else (0.4 if is_endpoint_changed else 0.0)
 
-        composite_risk = min(1.0, 0.35 * drift_score + 0.25 * keyword_score + 0.25 * permission_risk_score + 0.15 * endpoint_risk_score)
+        composite_risk = min(1.0, 0.35 * drift_score + 0.25 * combined_injection_risk + 0.25 * permission_risk_score + 0.15 * endpoint_risk_score)
 
         return {
             "drift_analysis": drift_results,
             "detected_keywords": detected_keywords,
+            "injection_ml_score": round(injection_prob, 4),
+            "is_injection_threat": injection_prob >= 0.50,
             "added_permissions": added_perms,
             "removed_permissions": removed_perms,
             "high_risk_added_permissions": high_risk_added,

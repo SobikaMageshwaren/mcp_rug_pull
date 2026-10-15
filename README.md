@@ -185,13 +185,17 @@ Outputs:
 
 ---
 
-## 17. Running Dashboard
+## 17. Running the React Web UI
 
-Launch the Streamlit interactive dashboard:
+Launch the high-performance React security interface:
 
 ```bash
-streamlit run dashboard/streamlit_app.py
+cd frontend
+npm run dev
 ```
+
+Open [http://localhost:5173](http://localhost:5173) in your browser.
+
 
 ---
 
